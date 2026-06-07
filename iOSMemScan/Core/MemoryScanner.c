@@ -46,7 +46,8 @@ pid_t *get_process_list(uint32_t *count) {
     // KERN_PROC_ALL 返回 struct kinfo_proc 数组
     // kinfo_proc 结构体大小在 iOS arm64 上为 408 字节
     // pid_t (p_pid) 是 kp_proc 的第一个字段（offset 0）
-    const size_t KINFO_PROC_SIZE = 408;
+    // kinfo_proc 结构体大小适用于 iOS arm64
+    const size_t KINFO_PROC_SIZE = sizeof(struct kinfo_proc);
     uint32_t proc_count = (uint32_t)(buf_size / KINFO_PROC_SIZE);
     if (proc_count == 0) {
         free(proc_buf);
