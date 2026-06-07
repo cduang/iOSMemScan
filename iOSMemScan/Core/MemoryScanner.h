@@ -3,7 +3,7 @@
 //  iOSMemScan
 //
 //  iOS 跨进程内存字符串扫描引擎
-//  基于 Mach 内核 API 实现
+//  基于 Mach VM API 实现（iOS 兼容）
 //
 
 #ifndef MemoryScanner_h
@@ -24,7 +24,7 @@ typedef struct {
     vm_prot_t         protection;   ///< 内存保护属性
     boolean_t         is_shared;    ///< 是否共享内存
     boolean_t         is_mapped;    ///< 是否已映射文件
-    char              region_type;  ///< 区域类型: D=数据, T=文本, S=共享库, ?=未知
+    char              region_type;  ///< 区域类型: D=数据, T=文本, ?=未知
 } MemoryRegion;
 
 /// 扫描结果项
