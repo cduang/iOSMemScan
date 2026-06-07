@@ -11,11 +11,12 @@
 #
 # 目录结构（checkout 后）:
 #   $GITHUB_WORKSPACE/
-#   ├── project.yml              ← XcodeGen 项目配置
 #   ├── README.md
+#   ├── .gitignore
 #   ├── .github/workflows/
 #   │   └── build.yml
-#   └── iOSMemScan/              ← 源代码目录
+#   └── iOSMemScan/              ← 源代码 + project.yml
+#       ├── project.yml          ← XcodeGen 项目配置
 #       ├── main.m
 #       ├── Core/
 #       ├── ViewControllers/
@@ -67,30 +68,31 @@ jobs:
           sudo mv /tmp/ldid /usr/local/bin/ldid
           ldid --version || echo "ldid installed (no version flag)"
 
-      # 5. 生成 Xcode 项目（project.yml 在仓库根目录）
+      # 5. 生成 Xcode 项目（project.yml 在 iOSMemScan/ 内）
       - name: Generate Xcode project
+        working-directory: iOSMemScan
         run: |
           echo "Current directory: $(pwd)"
           echo "Contents:"
           ls -la
-          ls -la iOSMemScan/
           xcodegen generate
           echo "Project generated successfully"
           ls -la *.xcodeproj
 
-      # 6. 编译项目（.xcodeproj 在仓库根目录）
+      # 6. 编译项目（.xcodeproj 在 iOSMemScan/ 内）
       - name: Build project
+        working-directory: iOSMemScan
         run: |
           # 配置构建参数
           DERIVED_DATA_DIR="${RUNNER_TEMP}/DerivedData"
-          
+
           # 先清理
           xcodebuild clean -project iOSMemScan.xcodeproj \
                            -scheme iOSMemScan \
                            -configuration Release \
                            -derivedDataPath "${DERIVED_DATA_DIR}" \
                            2>&1 | tee build.log
-          
+
           # 编译（不需要签名，TrollStore 会处理）
           xcodebuild build -project iOSMemScan.xcodeproj \
                            -scheme iOSMemScan \
@@ -102,7 +104,7 @@ jobs:
                            CODE_SIGNING_ALLOWED=NO \
                            PRODUCT_BUNDLE_IDENTIFIER=com.memscan.ios \
                            2>&1 | tee -a build.log
-          
+
           # 检查编译结果
           BUILD_RESULT=${PIPESTATUS[0]}
           if [ $BUILD_RESULT -ne 0 ]; then
@@ -110,30 +112,31 @@ jobs:
             tail -50 build.log
             exit $BUILD_RESULT
           fi
-          
+
           echo "✅ Build succeeded"
 
       # 7. 查找编译产物
       - name: Find build artifacts
+        working-directory: iOSMemScan
         run: |
           DERIVED_DATA_DIR="${RUNNER_TEMP}/DerivedData"
-          
+
           # 查找 .app 文件
           APP_PATH=$(find "${DERIVED_DATA_DIR}" -name "*.app" -type d | head -1)
-          
+
           if [ -z "$APP_PATH" ]; then
             echo "❌ Could not find .app in derived data"
             find "${DERIVED_DATA_DIR}" -name "*.app" 2>/dev/null || echo "No .app found"
             exit 1
           fi
-          
+
           echo "Found app at: ${APP_PATH}"
           echo "APP_PATH=${APP_PATH}" >> $GITHUB_ENV
-          
+
           # 列出 app 内容
           echo "App contents:"
           ls -la "${APP_PATH}/"
-          
+
           # 检查可执行文件
           EXECUTABLE="${APP_PATH}/iOSMemScan"
           if [ -f "$EXECUTABLE" ]; then
@@ -148,16 +151,17 @@ jobs:
 
       # 8. 使用 ldid 进行 TrollStore 签名
       - name: Sign with ldid for TrollStore
+        working-directory: iOSMemScan
         run: |
           APP_PATH="${{ env.APP_PATH }}"
-          
+
           # 复制 Entitlements.plist 到 app bundle
-          cp iOSMemScan/Resources/Entitlements.plist "${APP_PATH}/"
-          
+          cp Resources/Entitlements.plist "${APP_PATH}/"
+
           # 使用 ldid 注入 Entitlements
           echo "Signing with ldid..."
-          ldid -SiOSMemScan/Resources/Entitlements.plist "${APP_PATH}/iOSMemScan"
-          
+          ldid -SResources/Entitlements.plist "${APP_PATH}/iOSMemScan"
+
           # 验证签名
           echo "Verifying signature..."
           ldid -e "${APP_PATH}/iOSMemScan"
@@ -169,23 +173,23 @@ jobs:
           APP_PATH="${{ env.APP_PATH }}"
           IPA_DIR="${RUNNER_TEMP}/ipa"
           IPA_NAME="iOSMemScan.ipa"
-          
+
           mkdir -p "${IPA_DIR}/Payload"
-          
+
           echo "Copying app to Payload..."
           cp -R "${APP_PATH}" "${IPA_DIR}/Payload/"
-          
+
           echo "Creating IPA..."
           cd "${IPA_DIR}"
           zip -qr "${IPA_NAME}" Payload/
-          
+
           echo "IPA created: ${IPA_DIR}/${IPA_NAME}"
           ls -lh "${IPA_NAME}"
-          
+
           # 验证
           echo "Verifying IPA..."
           unzip -l "${IPA_NAME}" | head -20
-          
+
           echo "IPA_PATH=${IPA_DIR}/${IPA_NAME}" >> $GITHUB_ENV
 
       # 10. 上传构建产物
@@ -195,7 +199,7 @@ jobs:
           name: iOSMemScan-v1.0
           path: |
             ${{ env.IPA_PATH }}
-            build.log
+            iOSMemScan/build.log
           compression-level: 0
           if-no-files-found: error
 
