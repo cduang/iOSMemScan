@@ -165,7 +165,7 @@
     [self.view addSubview:self.caseControl];
     
     // 区域过滤
-    self.regionControl = [[UISegmentedControl alloc] initWithItems:@[@"所有可读", @"数据段", @"文本段", @"共享库"]];
+    self.regionControl = [[UISegmentedControl alloc] initWithItems:@[@"所有可读", @"数据段", @"文本段"]];
     self.regionControl.selectedSegmentIndex = 0;
     self.regionControl.tintColor = [UIColor systemBlueColor];
     [self.view addSubview:self.regionControl];
@@ -251,7 +251,6 @@
         case 0: regionFilter = 0; break;  // 所有可读
         case 1: regionFilter = 'D'; break; // 数据段
         case 2: regionFilter = 'T'; break; // 文本段
-        case 3: regionFilter = 'S'; break; // 共享库
     }
     
     const char *filterPtr = (regionFilter != 0) ? &regionFilter : NULL;
