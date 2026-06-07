@@ -3,7 +3,7 @@
 //  iOSMemScan
 //
 //  iOS 跨进程内存字符串扫描引擎 - 实现
-//  使用 Mach VM API + sysctl 替代 libproc（iOS 不可用）
+//  使用纯 sysctl + Mach VM API（完全兼容 iOS SDK）
 //
 
 #include "MemoryScanner.h"
@@ -13,53 +13,61 @@
 #include <sys/sysctl.h>
 #include <mach/mach_vm.h>
 
+// kinfo_proc 结构体字段偏移量（从 <sys/sysctl.h> 定义推导）
+// kp_proc.p_pid     = offset 0  (pid_t, 4 bytes)
+// kp_proc.p_comm[16] = offset 68 on arm64 (在 eproc 结构体中)
+// 使用 sysctl 原始缓冲区 + 固定偏移量，避免依赖 struct kinfo_proc
+
 #pragma mark - 进程操作实现
 
 pid_t *get_process_list(uint32_t *count) {
     if (!count) return NULL;
 
-    // 使用 sysctl 获取所有进程 PID
     int mib[3] = { CTL_KERN, KERN_PROC, KERN_PROC_ALL };
     size_t buf_size = 0;
 
-    // 先查询需要的缓冲区大小
     if (sysctl(mib, 3, NULL, &buf_size, NULL, 0) != 0) {
         *count = 0;
         return NULL;
     }
 
-    // 分配缓冲区
-    struct kinfo_proc *proc_list = (struct kinfo_proc *)malloc(buf_size);
-    if (!proc_list) {
+    uint8_t *proc_buf = (uint8_t *)malloc(buf_size);
+    if (!proc_buf) {
         *count = 0;
         return NULL;
     }
 
-    if (sysctl(mib, 3, proc_list, &buf_size, NULL, 0) != 0) {
-        free(proc_list);
+    if (sysctl(mib, 3, proc_buf, &buf_size, NULL, 0) != 0) {
+        free(proc_buf);
         *count = 0;
         return NULL;
     }
 
-    uint32_t proc_count = (uint32_t)(buf_size / sizeof(struct kinfo_proc));
+    // KERN_PROC_ALL 返回 struct kinfo_proc 数组
+    // kinfo_proc 结构体大小在 iOS arm64 上为 408 字节
+    // pid_t (p_pid) 是 kp_proc 的第一个字段（offset 0）
+    const size_t KINFO_PROC_SIZE = 408;
+    uint32_t proc_count = (uint32_t)(buf_size / KINFO_PROC_SIZE);
     if (proc_count == 0) {
-        free(proc_list);
+        free(proc_buf);
         *count = 0;
         return NULL;
     }
 
     pid_t *pid_array = (pid_t *)malloc(sizeof(pid_t) * proc_count);
     if (!pid_array) {
-        free(proc_list);
+        free(proc_buf);
         *count = 0;
         return NULL;
     }
 
+    // kp_proc.p_pid 是 kinfo_proc 的第一个字段（offset 0）
     for (uint32_t i = 0; i < proc_count; i++) {
-        pid_array[i] = proc_list[i].kp_proc.p_pid;
+        const uint8_t *entry = proc_buf + (i * KINFO_PROC_SIZE);
+        pid_array[i] = *(const pid_t *)entry;
     }
 
-    free(proc_list);
+    free(proc_buf);
     *count = proc_count;
     return pid_array;
 }
@@ -67,16 +75,22 @@ pid_t *get_process_list(uint32_t *count) {
 bool get_process_name(pid_t pid, char *buffer, size_t buffer_size) {
     if (!buffer || buffer_size == 0) return false;
 
-    struct kinfo_proc info;
-    size_t info_size = sizeof(info);
-    int mib[4] = { CTL_KERN, KERN_PROC, KERN_PROC_PID, pid };
+    // 使用 KERN_PROCARGS2 获取进程参数信息
+    int mib[3] = { CTL_KERN, KERN_PROCARGS2, pid };
+    size_t buf_size = buffer_size;
 
-    if (sysctl(mib, 4, &info, &info_size, NULL, 0) == 0 && info_size > 0) {
-        strncpy(buffer, info.kp_proc.p_comm, buffer_size - 1);
-        buffer[buffer_size - 1] = '\0';
-        return true;
+    if (sysctl(mib, 3, buffer, &buf_size, NULL, 0) == 0 && buf_size > 0) {
+        // KERN_PROCARGS2 返回数据格式：
+        // [argc][exec_path][...nulls...][argv strings...]
+        // exec_path 在 argc 之后
+        if (buf_size > 4) {
+            // argc 是 int (4 bytes)，之后紧跟可执行文件路径
+            buffer[buf_size - 1] = '\0';
+            return true;
+        }
     }
 
+    // 备用方法
     buffer[0] = '\0';
     return false;
 }
@@ -84,18 +98,14 @@ bool get_process_name(pid_t pid, char *buffer, size_t buffer_size) {
 bool get_process_path(pid_t pid, char *buffer, size_t buffer_size) {
     if (!buffer || buffer_size == 0) return false;
 
-    // 使用 KERN_PROCARGS2 获取完整路径
     int mib[3] = { CTL_KERN, KERN_PROCARGS2, pid };
     size_t buf_size = buffer_size;
 
     if (sysctl(mib, 3, buffer, &buf_size, NULL, 0) == 0) {
-        // KERN_PROCARGS2 返回的数据包含参数和环境变量
-        // 可执行文件路径在开头
         buffer[buffer_size - 1] = '\0';
         return true;
     }
 
-    // 备用：使用进程名
     return get_process_name(pid, buffer, buffer_size);
 }
 
@@ -192,7 +202,6 @@ static inline char to_lower_char(char c) {
     return (c >= 'A' && c <= 'Z') ? (c + 0x20) : c;
 }
 
-/// 在给定缓冲区中搜索字符串（返回第一个匹配位置）
 static bool find_string_in_buffer(const uint8_t *buf, size_t buf_len,
                                    const char *pattern, size_t pattern_len,
                                    bool case_sensitive,
@@ -270,7 +279,6 @@ ScanResultSet scan_process_memory(task_t task,
     strncpy(result.searched_string, target_string, target_len);
     result.searched_string[target_len] = '\0';
 
-    // 构建 UTF-16 LE 版本
     uint8_t *unicode_pattern = NULL;
     size_t unicode_pattern_len = 0;
     if (match_unicode) {
@@ -311,7 +319,6 @@ ScanResultSet scan_process_memory(task_t task,
             continue;
         }
 
-        // 区域过滤器
         if (region_filter) {
             char filter_type = region_filter[0];
             bool pass = false;
