@@ -1,0 +1,113 @@
+# iOSMemScan XcodeGen 项目配置
+# 使用 XcodeGen 自动生成 .xcodeproj
+# 安装: brew install xcodegen
+# 使用: xcodegen generate
+
+name: iOSMemScan
+options:
+  bundleIdPrefix: com.memscan
+  deploymentTarget:
+    iOS: "15.0"
+  xcodeVersion: "15.0"
+  groupSortPosition: top
+  generateEmptyDirectories: true
+  settingPresets: all
+  createIntermediateGroups: true
+
+settings:
+  base:
+    TARGETED_DEVICE_FAMILY: "1,2"
+    STRIP_STYLE: all
+    COPY_PHASE_STRIP: true
+    DEBUG_INFORMATION_FORMAT: dwarf-with-dsym
+    SWIFT_OBJC_BRIDGING_HEADER: ""
+    SWIFT_VERSION: ""
+
+targets:
+  iOSMemScan:
+    type: application
+    platform: iOS
+    deploymentTarget: "15.0"
+    info:
+      path: Resources/Info.plist
+    entitlements:
+      path: Resources/Entitlements.plist
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.memscan.ios
+        INFOPLIST_FILE: Resources/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Resources/Entitlements.plist
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "Apple Development"
+        PROVISIONING_PROFILE_SPECIFIER: ""
+        # TrollStore 需要
+        GENERATE_INFOPLIST_FILE: NO
+        VALIDATE_WORKSPACE: NO_ENTITLEMENTS
+        # 最低版本
+        IPHONEOS_DEPLOYMENT_TARGET: "15.0"
+        # 架构
+        ARCHS: arm64
+        ONLY_ACTIVE_ARCH: NO
+        # 使用 C 和 ObjC
+        CLANG_ENABLE_OBJC_ARC: YES
+        CLANG_CXX_LANGUAGE_STANDARD: "gnu++17"
+        CLANG_CXX_LIBRARY: "libc++"
+        # 优化
+        GCC_OPTIMIZATION_LEVEL: s
+        # 不启用 bitcode
+        ENABLE_BITCODE: NO
+    sources:
+      - path: .
+        name: iOSMemScan
+        type: group
+        # 排除构建输出目录
+        excludes:
+          - "*.xcodeproj"
+          - "*.xcworkspace"
+          - "build"
+          - ".build"
+        # 添加所有源文件
+        children:
+          - path: main.m
+          - path: AppDelegate.h
+          - path: AppDelegate.m
+          - path: Core/MemoryScanner.h
+          - path: Core/MemoryScanner.c
+          - path: ViewControllers/ProcessListController.h
+          - path: ViewControllers/ProcessListController.m
+          - path: ViewControllers/ScanViewController.h
+          - path: ViewControllers/ScanViewController.m
+          - path: Resources
+          - path: Views
+    dependencies:
+      - framework: Foundation.framework
+      - framework: UIKit.framework
+      - framework: CoreFoundation.framework
+    preBuildScripts:
+      - name: "Print Build Info"
+        script: |
+          echo "Building iOSMemScan v1.0"
+          echo "Target: ${TARGET_NAME}"
+          echo "Configuration: ${CONFIGURATION}"
+    postCompileScripts:
+      - name: "Generate .ipa for TrollStore"
+        script: |
+          # 检查是否在 CI 环境
+          if [ -n "${CI}" ]; then
+            echo "CI environment detected, packaging .ipa..."
+            
+            APP_PATH="${CONFIGURATION_BUILD_DIR}/${FULL_PRODUCT_NAME}"
+            IPA_DIR="${PROJECT_DIR}/build"
+            IPA_NAME="iOSMemScan.ipa"
+            
+            mkdir -p "${IPA_DIR}/Payload"
+            cp -R "${APP_PATH}" "${IPA_DIR}/Payload/"
+            cd "${IPA_DIR}"
+            
+            # 创建 IPA
+            zip -qr "${IPA_NAME}" Payload/
+            rm -rf Payload/
+            
+            echo "IPA created at: ${IPA_DIR}/${IPA_NAME}"
+            echo "IPA_PATH=${IPA_DIR}/${IPA_NAME}" >> ${GITHUB_ENV}
+          fi

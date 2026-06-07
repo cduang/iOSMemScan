@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- TrollStore 核心权限 - 允许运行未签名代码 -->
+	<key>com.apple.private.security.container-required</key>
+	<false/>
+	
+	<!-- 获取其他进程任务端口（核心权限） -->
+	<key>com.apple.system-task-sport</key>
+	<true/>
+	
+	<key>com.apple.system-task-special-port</key>
+	<true/>
+	
+	<!-- task_for_pid 访问权限 -->
+	<key>com.apple.system-task-special-port-1</key>
+	<true/>
+	
+	<key>com.apple.system-task-special-port-2</key>
+	<true/>
+	
+	<key>com.apple.system-task-special-port-3</key>
+	<true/>
+	
+	<key>com.apple.system-task-special-port-4</key>
+	<true/>
+	
+	<!-- 进程信息访问 -->
+	<key>com.apple.private.memorystatus</key>
+	<true/>
+	
+	<!-- 系统信息访问 -->
+	<key>com.apple.system-sysctl</key>
+	<true/>
+	
+	<!-- 允许获取进程列表 -->
+	<key>com.apple.private.pidinfo</key>
+	<true/>
+	
+	<!-- 动态代码签名 -->
+	<key>com.apple.private.cs.debugger</key>
+	<true/>
+	
+	<!-- 平台应用标识（TrollStore 需要） -->
+	<key>platform-application</key>
+	<true/>
+	
+	<!-- 获取任务端口 -->
+	<key>com.apple.security.exception.mach-lookup.global-name</key>
+	<array>
+		<string>com.apple.system.taskport</string>
+	</array>
+	
+	<!-- 允许对任意进程调用 ptrace -->
+	<key>com.apple.private.security.exception.ptrace</key>
+	<true/>
+	
+	<!-- 免除沙盒限制 -->
+	<key>com.apple.private.security.no-sandbox</key>
+	<true/>
+	
+	<!-- 允许获取进程的代码签名信息 -->
+	<key>com.apple.private.security.exception.dyld-cache</key>
+	<true/>
+</dict>
+</plist>

@@ -1,0 +1,28 @@
+# Xcode
+*.xcodeproj
+*.xcworkspace
+*.xcuserdata
+DerivedData/
+build/
+.build/
+
+# macOS
+.DS_Store
+*.swp
+*.swo
+*~
+
+# XcodeGen
+*.xcodeproj
+
+# Logs
+*.log
+
+# IPA
+*.ipa
+Payload/
+
+# IDE
+.idea/
+.vscode/
+*.xcuserstate
