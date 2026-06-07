@@ -1,19 +1,5 @@
 # iOSMemScan Build Workflow
 # 使用 GitHub Actions 自动编译并生成 TrollStore 可安装的 .ipa
-#
-# 工作原理:
-# 1. 使用 macos-latest runner（需要 macOS 来运行 Xcode）
-# 2. 安装 XcodeGen 生成 .xcodeproj
-# 3. 使用 xcodebuild 编译
-# 4. 使用 ldid 伪造签名（TrollStore 不需要真正的签名）
-# 5. 打包为 .ipa
-# 6. 上传为 GitHub Release Artifact
-#
-# 重要: 不要使用 working-directory!
-# 因为仓库名就叫 iOSMemScan，checkout 后路径为:
-#   /Users/runner/work/iOSMemScan/iOSMemScan/
-# 其下还有子目录 iOSMemScan/，再用 working-directory 会双重嵌套
-# 所有路径用 cd 或完整相对路径处理
 
 name: Build iOSMemScan (.ipa for TrollStore)
 
@@ -32,60 +18,42 @@ jobs:
     runs-on: macos-latest
 
     steps:
-      # 1. 检出代码
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # 2. 显示系统信息
       - name: Show system info
         run: |
-          echo "=== System Info ==="
-          sw_vers
-          echo "---"
           echo "GITHUB_WORKSPACE: ${GITHUB_WORKSPACE}"
-          echo "Contents of workspace:"
           ls -la "${GITHUB_WORKSPACE}"
-          echo "Contents of iOSMemScan/:"
-          ls -la "${GITHUB_WORKSPACE}/iOSMemScan" 2>/dev/null || echo "(no iOSMemScan subdirectory)"
           echo "---"
+          ls -la "${GITHUB_WORKSPACE}/iOSMemScan" 2>/dev/null
+          sw_vers
           xcode-select -p
           xcodebuild -version
-          xcodebuild -showsdks
 
-      # 3. 安装 XcodeGen
       - name: Install XcodeGen
         run: |
           brew install xcodegen || brew upgrade xcodegen
           xcodegen --version
 
-      # 4. 安装 ldid（TrollStore 签名工具）
       - name: Install ldid
         run: |
           curl -L -o /tmp/ldid https://github.com/ProcursusTeam/ldid/releases/download/v2.1.5-procursus7/ldid_macosx_arm64
           chmod +x /tmp/ldid
           sudo mv /tmp/ldid /usr/local/bin/ldid
-          ldid --version 2>/dev/null || echo "ldid installed"
 
-      # 5. 生成 Xcode 项目
       - name: Generate Xcode project
+        # project.yml 在仓库根目录，xcodegen 会自动找到它
         run: |
-          # project.yml 在 iOSMemScan/ 子目录内
-          cd iOSMemScan
-          echo "Running xcodegen in: $(pwd)"
-          ls -la
           xcodegen generate
-          echo "Project generated successfully"
+          echo "✅ Xcode project generated"
           ls -la *.xcodeproj
 
-      # 6. 编译项目
       - name: Build project
         run: |
-          cd iOSMemScan
           DERIVED_DATA_DIR="${RUNNER_TEMP}/DerivedData"
-
-          echo "Building in: $(pwd)"
 
           xcodebuild clean -project iOSMemScan.xcodeproj \
                            -scheme iOSMemScan \
@@ -106,86 +74,52 @@ jobs:
 
           BUILD_RESULT=${PIPESTATUS[0]}
           if [ $BUILD_RESULT -ne 0 ]; then
-            echo "❌ Build failed with exit code: $BUILD_RESULT"
+            echo "❌ Build failed"
             tail -50 build.log
             exit $BUILD_RESULT
           fi
-
           echo "✅ Build succeeded"
 
-      # 7. 查找编译产物
       - name: Find build artifacts
         run: |
           DERIVED_DATA_DIR="${RUNNER_TEMP}/DerivedData"
           APP_PATH=$(find "${DERIVED_DATA_DIR}" -name "*.app" -type d | head -1)
-
           if [ -z "$APP_PATH" ]; then
-            echo "❌ Could not find .app in derived data"
-            find "${DERIVED_DATA_DIR}" -name "*.app" 2>/dev/null || echo "No .app found"
+            echo "❌ .app not found"
             exit 1
           fi
-
-          echo "Found app at: ${APP_PATH}"
           echo "APP_PATH=${APP_PATH}" >> $GITHUB_ENV
-
-          echo "App contents:"
+          echo "Found: ${APP_PATH}"
           ls -la "${APP_PATH}/"
 
-          EXECUTABLE="${APP_PATH}/iOSMemScan"
-          if [ -f "$EXECUTABLE" ]; then
-            echo "✅ Executable found"
-            file "$EXECUTABLE"
-            lipo -info "$EXECUTABLE" || true
-          else
-            echo "❌ Executable not found"
-            ls -la "${APP_PATH}/"
-            exit 1
-          fi
-
-      # 8. 使用 ldid 进行 TrollStore 签名
-      - name: Sign with ldid for TrollStore
+      - name: Sign with ldid
         run: |
           APP_PATH="${{ env.APP_PATH }}"
           cp iOSMemScan/Resources/Entitlements.plist "${APP_PATH}/"
-
-          echo "Signing with ldid..."
           ldid -SiOSMemScan/Resources/Entitlements.plist "${APP_PATH}/iOSMemScan"
+          echo "✅ Signed"
 
-          echo "Verifying signature..."
-          ldid -e "${APP_PATH}/iOSMemScan"
-          echo "✅ Signing completed"
-
-      # 9. 打包为 .ipa
       - name: Package .ipa
         run: |
           APP_PATH="${{ env.APP_PATH }}"
           IPA_DIR="${RUNNER_TEMP}/ipa"
-          IPA_NAME="iOSMemScan.ipa"
-
           mkdir -p "${IPA_DIR}/Payload"
           cp -R "${APP_PATH}" "${IPA_DIR}/Payload/"
-
           cd "${IPA_DIR}"
-          zip -qr "${IPA_NAME}" Payload/
+          zip -qr iOSMemScan.ipa Payload/
+          echo "IPA_PATH=${IPA_DIR}/iOSMemScan.ipa" >> $GITHUB_ENV
+          ls -lh iOSMemScan.ipa
 
-          echo "IPA created: ${IPA_DIR}/${IPA_NAME}"
-          ls -lh "${IPA_NAME}"
-          unzip -l "${IPA_NAME}" | head -20
-
-          echo "IPA_PATH=${IPA_DIR}/${IPA_NAME}" >> $GITHUB_ENV
-
-      # 10. 上传构建产物
-      - name: Upload IPA as artifact
+      - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
           name: iOSMemScan-v1.0
           path: |
             ${{ env.IPA_PATH }}
-            iOSMemScan/build.log
+            build.log
           compression-level: 0
           if-no-files-found: error
 
-      # 11. 如果是 tag 推送，创建 Release
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v1
@@ -193,32 +127,20 @@ jobs:
           name: iOSMemScan ${{ github.ref_name }}
           body: |
             ## iOSMemScan ${{ github.ref_name }}
-
-            ### 更新内容
-            - 请查看 CHANGELOG 或 Commit 历史
-
             ### 安装方式
             1. 下载 `iOSMemScan.ipa`
             2. 使用 TrollStore 安装
             3. 允许必要的权限
-
             ### 系统要求
             - iOS 15.0+
             - arm64 (iPhone 6s 及以上)
             - 已安装 TrollStore
-          files: |
-            ${{ env.IPA_PATH }}
+          files: ${{ env.IPA_PATH }}
           draft: true
           prerelease: false
 
-      # 12. 构建摘要
       - name: Build Summary
         run: |
           echo "## 📱 iOSMemScan Build Complete" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Version**: 1.0" >> $GITHUB_STEP_SUMMARY
           echo "- **Format**: .ipa (TrollStore)" >> $GITHUB_STEP_SUMMARY
           echo "- **iOS Target**: 15.0+" >> $GITHUB_STEP_SUMMARY
-          echo "- **Arch**: arm64" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Download the artifact from this run to install via TrollStore." >> $GITHUB_STEP_SUMMARY
