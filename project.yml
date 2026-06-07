@@ -1,10 +1,3 @@
-# iOSMemScan XcodeGen 项目配置
-# 使用: 在仓库根目录执行 xcodegen generate
-#
-# project.yml 在仓库根目录
-# 源代码在 iOSMemScan/ 子目录
-# 所有路径相对于 project.yml 所在目录
-
 name: iOSMemScan
 options:
   bundleIdPrefix: com.memscan
@@ -22,8 +15,6 @@ settings:
     STRIP_STYLE: all
     COPY_PHASE_STRIP: true
     DEBUG_INFORMATION_FORMAT: dwarf-with-dsym
-    SWIFT_OBJC_BRIDGING_HEADER: ""
-    SWIFT_VERSION: ""
 
 targets:
   iOSMemScan:
@@ -34,22 +25,18 @@ targets:
       path: iOSMemScan/Resources/Info.plist
     entitlements:
       path: iOSMemScan/Resources/Entitlements.plist
+      # 不让 Entitlements 加入 Copy Bundle Resources
+      destination: none
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.memscan.ios
         INFOPLIST_FILE: iOSMemScan/Resources/Info.plist
         CODE_SIGN_ENTITLEMENTS: iOSMemScan/Resources/Entitlements.plist
-        CODE_SIGN_STYLE: Manual
-        CODE_SIGN_IDENTITY: "Apple Development"
-        PROVISIONING_PROFILE_SPECIFIER: ""
         GENERATE_INFOPLIST_FILE: NO
-        VALIDATE_WORKSPACE: NO_ENTITLEMENTS
         IPHONEOS_DEPLOYMENT_TARGET: "15.0"
         ARCHS: arm64
         ONLY_ACTIVE_ARCH: NO
         CLANG_ENABLE_OBJC_ARC: YES
-        CLANG_CXX_LANGUAGE_STANDARD: "gnu++17"
-        CLANG_CXX_LIBRARY: "libc++"
         GCC_OPTIMIZATION_LEVEL: s
         ENABLE_BITCODE: NO
     sources:
@@ -65,9 +52,3 @@ targets:
       - framework: Foundation.framework
       - framework: UIKit.framework
       - framework: CoreFoundation.framework
-    preBuildScripts:
-      - name: "Print Build Info"
-        script: |
-          echo "Building iOSMemScan v1.0"
-          echo "Target: ${TARGET_NAME}"
-          echo "Configuration: ${CONFIGURATION}"
