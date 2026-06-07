@@ -1,7 +1,10 @@
 # iOSMemScan XcodeGen 项目配置
 # 使用 XcodeGen 自动生成 .xcodeproj
 # 安装: brew install xcodegen
-# 使用: xcodegen generate
+# 使用: cd <repo_root> && xcodegen generate
+#
+# 注意: project.yml 在仓库根目录，源码在 iOSMemScan/ 子目录
+#       所有路径均相对于 project.yml 所在目录
 
 name: iOSMemScan
 options:
@@ -29,14 +32,15 @@ targets:
     platform: iOS
     deploymentTarget: "15.0"
     info:
-      path: Resources/Info.plist
+      # 相对于 project.yml 所在目录
+      path: iOSMemScan/Resources/Info.plist
     entitlements:
-      path: Resources/Entitlements.plist
+      path: iOSMemScan/Resources/Entitlements.plist
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.memscan.ios
-        INFOPLIST_FILE: Resources/Info.plist
-        CODE_SIGN_ENTITLEMENTS: Resources/Entitlements.plist
+        INFOPLIST_FILE: iOSMemScan/Resources/Info.plist
+        CODE_SIGN_ENTITLEMENTS: iOSMemScan/Resources/Entitlements.plist
         CODE_SIGN_STYLE: Manual
         CODE_SIGN_IDENTITY: "Apple Development"
         PROVISIONING_PROFILE_SPECIFIER: ""
@@ -57,16 +61,17 @@ targets:
         # 不启用 bitcode
         ENABLE_BITCODE: NO
     sources:
-      - path: .
+      # sources.path 相对于 project.yml
+      - path: iOSMemScan
         name: iOSMemScan
         type: group
-        # 排除构建输出目录
+        # 排除非源文件
         excludes:
           - "*.xcodeproj"
           - "*.xcworkspace"
           - "build"
           - ".build"
-        # 添加所有源文件
+        # 子路径相对于 sources.path（即 iOSMemScan/）
         children:
           - path: main.m
           - path: AppDelegate.h
@@ -89,25 +94,3 @@ targets:
           echo "Building iOSMemScan v1.0"
           echo "Target: ${TARGET_NAME}"
           echo "Configuration: ${CONFIGURATION}"
-    postCompileScripts:
-      - name: "Generate .ipa for TrollStore"
-        script: |
-          # 检查是否在 CI 环境
-          if [ -n "${CI}" ]; then
-            echo "CI environment detected, packaging .ipa..."
-            
-            APP_PATH="${CONFIGURATION_BUILD_DIR}/${FULL_PRODUCT_NAME}"
-            IPA_DIR="${PROJECT_DIR}/build"
-            IPA_NAME="iOSMemScan.ipa"
-            
-            mkdir -p "${IPA_DIR}/Payload"
-            cp -R "${APP_PATH}" "${IPA_DIR}/Payload/"
-            cd "${IPA_DIR}"
-            
-            # 创建 IPA
-            zip -qr "${IPA_NAME}" Payload/
-            rm -rf Payload/
-            
-            echo "IPA created at: ${IPA_DIR}/${IPA_NAME}"
-            echo "IPA_PATH=${IPA_DIR}/${IPA_NAME}" >> ${GITHUB_ENV}
-          fi

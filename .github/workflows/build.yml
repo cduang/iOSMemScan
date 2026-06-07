@@ -8,6 +8,18 @@
 # 4. 使用 ldid 伪造签名（TrollStore 不需要真正的签名）
 # 5. 打包为 .ipa
 # 6. 上传为 GitHub Release Artifact
+#
+# 目录结构（checkout 后）:
+#   $GITHUB_WORKSPACE/
+#   ├── project.yml              ← XcodeGen 项目配置
+#   ├── README.md
+#   ├── .github/workflows/
+#   │   └── build.yml
+#   └── iOSMemScan/              ← 源代码目录
+#       ├── main.m
+#       ├── Core/
+#       ├── ViewControllers/
+#       └── Resources/
 
 name: Build iOSMemScan (.ipa for TrollStore)
 
@@ -24,7 +36,7 @@ jobs:
   build:
     name: Build iOSMemScan
     runs-on: macos-latest
-    
+
     steps:
       # 1. 检出代码
       - name: Checkout code
@@ -55,23 +67,22 @@ jobs:
           sudo mv /tmp/ldid /usr/local/bin/ldid
           ldid --version || echo "ldid installed (no version flag)"
 
-      # 5. 生成 Xcode 项目
+      # 5. 生成 Xcode 项目（project.yml 在仓库根目录）
       - name: Generate Xcode project
-        working-directory: iOSMemScan
         run: |
+          echo "Current directory: $(pwd)"
+          echo "Contents:"
+          ls -la
+          ls -la iOSMemScan/
           xcodegen generate
           echo "Project generated successfully"
           ls -la *.xcodeproj
 
-      # 6. 编译项目
+      # 6. 编译项目（.xcodeproj 在仓库根目录）
       - name: Build project
-        working-directory: iOSMemScan
         run: |
           # 配置构建参数
           DERIVED_DATA_DIR="${RUNNER_TEMP}/DerivedData"
-          
-          # 创建用于签名的空文件（TrollStore 不需要 real 签名）
-          # 但 xcodebuild 需要有效的签名标识，我们用 ad-hoc 方式
           
           # 先清理
           xcodebuild clean -project iOSMemScan.xcodeproj \
@@ -80,7 +91,7 @@ jobs:
                            -derivedDataPath "${DERIVED_DATA_DIR}" \
                            2>&1 | tee build.log
           
-          # 编译
+          # 编译（不需要签名，TrollStore 会处理）
           xcodebuild build -project iOSMemScan.xcodeproj \
                            -scheme iOSMemScan \
                            -configuration Release \
@@ -90,13 +101,12 @@ jobs:
                            CODE_SIGNING_REQUIRED=NO \
                            CODE_SIGNING_ALLOWED=NO \
                            PRODUCT_BUNDLE_IDENTIFIER=com.memscan.ios \
-                           2>&1 | tee -a build.log | xcpretty
+                           2>&1 | tee -a build.log
           
           # 检查编译结果
           BUILD_RESULT=${PIPESTATUS[0]}
           if [ $BUILD_RESULT -ne 0 ]; then
             echo "❌ Build failed with exit code: $BUILD_RESULT"
-            # 显示最后的错误
             tail -50 build.log
             exit $BUILD_RESULT
           fi
@@ -105,7 +115,6 @@ jobs:
 
       # 7. 查找编译产物
       - name: Find build artifacts
-        working-directory: iOSMemScan
         run: |
           DERIVED_DATA_DIR="${RUNNER_TEMP}/DerivedData"
           
@@ -139,16 +148,15 @@ jobs:
 
       # 8. 使用 ldid 进行 TrollStore 签名
       - name: Sign with ldid for TrollStore
-        working-directory: iOSMemScan
         run: |
           APP_PATH="${{ env.APP_PATH }}"
           
           # 复制 Entitlements.plist 到 app bundle
-          cp Resources/Entitlements.plist "${APP_PATH}/"
+          cp iOSMemScan/Resources/Entitlements.plist "${APP_PATH}/"
           
           # 使用 ldid 注入 Entitlements
           echo "Signing with ldid..."
-          ldid -SResources/Entitlements.plist "${APP_PATH}/iOSMemScan"
+          ldid -SiOSMemScan/Resources/Entitlements.plist "${APP_PATH}/iOSMemScan"
           
           # 验证签名
           echo "Verifying signature..."
@@ -157,7 +165,6 @@ jobs:
 
       # 9. 打包为 .ipa
       - name: Package .ipa
-        working-directory: iOSMemScan
         run: |
           APP_PATH="${{ env.APP_PATH }}"
           IPA_DIR="${RUNNER_TEMP}/ipa"
@@ -181,14 +188,14 @@ jobs:
           
           echo "IPA_PATH=${IPA_DIR}/${IPA_NAME}" >> $GITHUB_ENV
 
-      # 10. 上传为构建产物
+      # 10. 上传构建产物
       - name: Upload IPA as artifact
         uses: actions/upload-artifact@v4
         with:
           name: iOSMemScan-v1.0
           path: |
             ${{ env.IPA_PATH }}
-            iOSMemScan/build.log
+            build.log
           compression-level: 0
           if-no-files-found: error
 
@@ -200,15 +207,15 @@ jobs:
           name: iOSMemScan ${{ github.ref_name }}
           body: |
             ## iOSMemScan ${{ github.ref_name }}
-            
+
             ### 更新内容
             - 请查看 CHANGELOG 或 Commit 历史
-            
+
             ### 安装方式
             1. 下载 `iOSMemScan.ipa`
             2. 使用 TrollStore 安装
             3. 允许必要的权限
-            
+
             ### 系统要求
             - iOS 15.0+
             - arm64 (iPhone 6s 及以上)
@@ -218,7 +225,7 @@ jobs:
           draft: true
           prerelease: false
 
-      # 12. 发送通知（可选）
+      # 12. 构建摘要
       - name: Build Summary
         run: |
           echo "## 📱 iOSMemScan Build Complete" >> $GITHUB_STEP_SUMMARY
